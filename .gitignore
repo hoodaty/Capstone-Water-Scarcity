@@ -5,6 +5,7 @@ data/
 dataset/
 
 models/
+figures/
 .DS_Store
 
 # Byte-compiled / optimized / DLL files
