@@ -39,7 +39,8 @@ USE_MIXED_CALIBRATION = True
 MIXED_CALIB_FRACTION = 0.2  # fraction of test_spatio_temporal used for calibration
 USE_EWMA = False
 
-METEO_LAG_WINDOWS = [1, 2, 4, 8, 12, 16]
+# METEO_LAG_WINDOWS = [1, 2, 4, 8, 12, 16]
+METEO_LAG_WINDOWS = []
 METEO_LAG_COLUMNS = [
     "precipitations", "temperatures", "soil_moisture", "evaporation",
     "precipitation_region", "temperature_region", "soil_moisture_region", "evaporation_region",
