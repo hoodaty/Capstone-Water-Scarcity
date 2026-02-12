@@ -22,7 +22,8 @@ from src.utils.model import (
 )
 
 # --- CONFIGURATION ---
-INPUT_FILE = "./data/input/dataset_baseline.csv"
+BASE_DIR_CONF = os.path.dirname(os.path.abspath(__file__))
+INPUT_FILE = os.path.join(BASE_DIR_CONF, "data", "input", "dataset_baseline.csv")
 TIME_VALIDATION = "2000-01-01 00:00:00"
 TRAIN_STATION_FRACTION = 0.75
 NUMBER_OF_WEEKS = 4
@@ -237,16 +238,23 @@ def analyze_collinearity(X, threshold=0.9):
     Z = hierarchy.linkage(dist_linkage, method='ward')
     
     # 3. Plot Dendrogram
+    
+    # Absolute paths
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    FIG_DIR = os.path.join(BASE_DIR, "figures", "models")
+    os.makedirs(FIG_DIR, exist_ok=True)
+    
     plt.figure(figsize=(32, 8))
     _ = hierarchy.dendrogram(
         Z, labels=X.columns, leaf_rotation=90, leaf_font_size=8
     )
     plt.title("Hierarchical Clustering Dendrogram (Spearman Correlation)")
     plt.tight_layout()
-    os.makedirs("./figures/models/", exist_ok=True)
-    plt.savefig("./figures/models/collinearity_dendrogram.png")
+    
+    save_path = os.path.join(FIG_DIR, "collinearity_dendrogram.png")
+    plt.savefig(save_path)
     plt.close()
-    print("Collinearity dendrogram saved to ./figures/models/collinearity_dendrogram.png")
+    print(f"Collinearity dendrogram saved to {save_path}")
     
     # 4. Identify Clusters
     # fcluster returns cluster IDs. Criterion 'distance' with threshold corresponds to 1 - corr_threshold
@@ -313,9 +321,13 @@ def train_multiweek():
         
         # Save Week 0 Model
         if i == 0:
-            os.makedirs("./models/final/", exist_ok=True)
-            joblib.dump(model, "./models/final/lgbm_week0.joblib")
-            print("Week 0 model saved to ./models/final/lgbm_week0.joblib")
+            BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+            MODEL_DIR = os.path.join(BASE_DIR, "models", "final")
+            os.makedirs(MODEL_DIR, exist_ok=True)
+            
+            save_path = os.path.join(MODEL_DIR, "lgbm_week0.joblib")
+            joblib.dump(model, save_path)
+            print(f"Week 0 model saved to {save_path}")
 
     print("\n--- 3. Evaluation ---")
     
@@ -378,6 +390,13 @@ def train_multiweek():
         
         # Force non-negative lower bound for discharge
         y_lower_adj = np.maximum(0, y_lower_adj)
+
+        # --- CONSISTENCY CHECK ---
+        # Ensure Median is within [Lower, Upper]
+        # If Median < Lower, lower the Lower bound.
+        # If Median > Upper, raise the Upper bound.
+        y_lower_adj = np.minimum(y_lower_adj, y_pred)
+        y_upper_adj = np.maximum(y_upper_adj, y_pred)
 
         # Force Upper >= Lower + small epsilon to avoid log(0) or log(neg) in metrics
         y_upper_adj = np.maximum(y_upper_adj, y_lower_adj + 1e-4)

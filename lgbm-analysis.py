@@ -14,7 +14,8 @@ from src.utils.model import split_dataset
 from src.utils.plots import plot_water_flow_predictions
 
 # --- CONFIGURATION (Must match lgbm-cqr.py) ---
-INPUT_FILE = "./data/input/dataset_baseline.csv"
+BASE_DIR_CONF = os.path.dirname(os.path.abspath(__file__))
+INPUT_FILE = os.path.join(BASE_DIR_CONF, "data", "input", "dataset_baseline.csv")
 TIME_VALIDATION = "2000-01-01 00:00:00"
 TRAIN_STATION_FRACTION = 0.75
 NUMBER_OF_WEEKS = 4
@@ -127,7 +128,8 @@ def run_analysis():
     y_test = test_spatio_temporal[TARGET_COLS[0]].values
     
     # Load Model
-    model_path = "./models/final/lgbm_week0.joblib"
+    MODEL_DIR = os.path.join(BASE_DIR_CONF, "models", "final")
+    model_path = os.path.join(MODEL_DIR, "lgbm_week0.joblib")
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"Model not found at {model_path}. Run lgbm-cqr.py first.")
     
@@ -135,7 +137,10 @@ def run_analysis():
     wrapper = joblib.load(model_path)
     median_model = wrapper.models['median'] # LGBMRegressor
     
-    os.makedirs("./figures/models/", exist_ok=True)
+    # Define base path relative to this script
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    FIG_DIR = os.path.join(BASE_DIR, "figures", "models")
+    os.makedirs(FIG_DIR, exist_ok=True)
 
     print("\n--- 2. Sanity Check: LGBM Gain Importance ---")
     plt.figure(figsize=(10, 12))
@@ -147,7 +152,8 @@ def run_analysis():
         title="LGBM Gain Importance (Top 20)",
     )
     plt.tight_layout()
-    plt.savefig("./figures/models/week0_01_gain_importance.png")
+    save_path = os.path.join(FIG_DIR, "week0_01_gain_importance.png")
+    plt.savefig(save_path)
     plt.close()
     print("Saved: week0_01_gain_importance.png")
 
@@ -179,7 +185,8 @@ def run_analysis():
     )
     plt.title("Permutation Importance (Test Set)")
     plt.tight_layout()
-    plt.savefig("./figures/models/week0_02_permutation_importance.png")
+    save_path = os.path.join(FIG_DIR, "week0_02_permutation_importance.png")
+    plt.savefig(save_path)
     plt.close()
     print("Saved: week0_02_permutation_importance.png")
 
@@ -198,7 +205,8 @@ def run_analysis():
     shap.summary_plot(shap_values, X_shap, show=False)
     plt.title("SHAP Summary Plot (Week 0)")
     plt.tight_layout()
-    plt.savefig("./figures/models/week0_03_shap_summary.png")
+    save_path = os.path.join(FIG_DIR, "week0_03_shap_summary.png")
+    plt.savefig(save_path)
     plt.close()
     print("Saved: week0_03_shap_summary.png")
     
@@ -219,7 +227,8 @@ def run_analysis():
         plt.title(f"SHAP Dependence: {feature}")
         plt.tight_layout()
         clean_name = feature.replace("/", "_").replace(" ", "_")
-        plt.savefig(f"./figures/models/week0_04_shap_dependence_{clean_name}.png")
+        save_path = os.path.join(FIG_DIR, f"week0_04_shap_dependence_{clean_name}.png")
+        plt.savefig(save_path)
         plt.close()
         print(f"Saved dependence plot for {feature}")
 
