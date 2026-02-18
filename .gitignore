@@ -1,10 +1,13 @@
 # Ignore the data folder and all its subdirectories and files
 data/
+figures/
+results/
 
 # Ignore the dataset folder and all its subdirectories and files
 dataset/
 
-models/
+models/*
+!models/*.py
 figures/
 .DS_Store
 

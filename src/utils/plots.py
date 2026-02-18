@@ -146,7 +146,14 @@ def plot_hydrographic_maps(area: str, gdf_dict: dict, bbox: dict) -> None:
 
 
 def plot_water_flow_predictions(
-    ground_truth, prediction, y_pis, prefixe, save=False, display=True
+    ground_truth,
+    prediction,
+    y_pis,
+    prefixe,
+    save=False,
+    display=True,
+    target_col="water_flow_week1",
+    save_path=None,
 ):
     """Plot water flow predictions versus actual water flow for each station.
 
@@ -158,6 +165,8 @@ def plot_water_flow_predictions(
         save (bool, optional): If True, the plot is saved
         as a PNG file in the '../../figures/models/'.
         display (bool, optional): If True, the plot is displayed.
+        target_col (str, optional): Column name for the target series.
+        save_path (str, optional): Explicit path to save the plot.
 
     Returns:
         None. Saves the plot as a PNG file in the specified directory.
@@ -171,6 +180,9 @@ def plot_water_flow_predictions(
         water_flow["predictions_up"] = y_pis[:, 1]
         water_flow["predictions_dw"] = y_pis[:, 0]
     water_flow = water_flow.reset_index()
+
+    if target_col not in water_flow.columns:
+        raise ValueError(f"target_col '{target_col}' not found in ground_truth.")
 
     unique_names = water_flow["station_code"].unique()
 
@@ -206,7 +218,7 @@ def plot_water_flow_predictions(
         )
         ax.plot(
             wf_station["ObsDate"],
-            wf_station["water_flow_week1"],
+            wf_station[target_col],
             label="Water Flow",
             color="blue",
             linewidth=2,
@@ -225,17 +237,24 @@ def plot_water_flow_predictions(
 
     plt.tight_layout()
 
-    if save:
-        date = pd.Timestamp.now().strftime("%d-%m-%Y_%H-%M")
-        
-        # Calculate absolute path to project root (src/utils/plots.py -> src/utils -> src -> root)
-        current_file_path = os.path.abspath(__file__)
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file_path)))
-        
-        save_dir = os.path.join(project_root, "figures", "models")
-        os.makedirs(save_dir, exist_ok=True)
-        
-        save_path = os.path.join(save_dir, f"{prefixe}_{date}_wf_predictions.png")
+    should_save = save or save_path is not None
+    if should_save:
+        if save_path is None:
+            date = pd.Timestamp.now().strftime("%d-%m-%Y_%H-%M")
+
+            # Calculate absolute path to project root (src/utils/plots.py -> src/utils -> src -> root)
+            current_file_path = os.path.abspath(__file__)
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file_path)))
+
+            save_dir = os.path.join(project_root, "figures", "models")
+            os.makedirs(save_dir, exist_ok=True)
+
+            save_path = os.path.join(save_dir, f"{prefixe}_{date}_wf_predictions.png")
+        else:
+            save_dir = os.path.dirname(save_path)
+            if save_dir:
+                os.makedirs(save_dir, exist_ok=True)
+
         fig.savefig(save_path)
         plt.close(fig)
         print(f"Plot saved to {save_path}")
