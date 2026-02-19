@@ -16,6 +16,8 @@ from src.utils.model import (
     summarize_metrics,
     standardize_prediction_intervals,
     standardize_values,
+    winkler_score,
+    wis_score,
 )
 
 # --- CONFIGURATION ---
@@ -104,6 +106,7 @@ def compute_per_station_metrics_robust(
     stations: np.ndarray,
     y_pred_lower_std: np.ndarray,
     y_pred_upper_std: np.ndarray,
+    alpha: float,
 ) -> pd.DataFrame:
     """Robust computation of station metrics with sigma clamping."""
     station_list = np.unique(stations)
@@ -132,6 +135,9 @@ def compute_per_station_metrics_robust(
 
         coverage_s = np.mean((y_true_s >= y_lower_s) & (y_true_s <= y_upper_s))
         interval_size_s = np.mean(y_upper_s - y_lower_s)
+        winkler_s = np.mean(winkler_score(y_true_s, y_lower_s, y_upper_s, alpha))
+        wis_s = np.mean(wis_score(y_true_s, y_lower_s, y_upper_s, y_pred_s, alpha))
+        coverage_gap_s = coverage_s - (1 - alpha)
 
         records.append({
             "station_code": s,
@@ -140,6 +146,9 @@ def compute_per_station_metrics_robust(
             "coverage": coverage_s,
             "scaled_interval_size": interval_size_s,
             "log_likelihood": nll_s,
+            "winkler": winkler_s,
+            "wis": wis_s,
+            "coverage_gap": coverage_gap_s,
         })
 
     return pd.DataFrame(records)
@@ -175,6 +184,11 @@ def main():
     parser = argparse.ArgumentParser(description="Train quantile model with CQR calibration")
     parser.add_argument("--calib-temp", action="store_true", help="Enable calibration using the Temporal Train split.")
     parser.add_argument("--calib-stemp", action="store_true", help="Enable calibration using BOTH Temporal and Spatio-Temporal Train splits.")
+    parser.add_argument(
+        "--calib-spatio-only",
+        action="store_true",
+        help="Enable calibration using ONLY the Spatio-Temporal Train split.",
+    )
     parser.add_argument("--name", type=str, default="", help="Custom name tag for the experiment (appended to timestamp)")
     parser.add_argument(
         "--model",
@@ -184,16 +198,22 @@ def main():
     )
     args = parser.parse_args()
 
+    if args.calib_spatio_only and (args.calib_temp or args.calib_stemp):
+        raise ValueError("Choose one calibration mode: temp, mixed, or spatio-only.")
+
     # Logic: --calib-stemp implies mixed calibration (both)
     if args.calib_stemp:
         args.calib_temp = True
+
+    calib_spatio_only = args.calib_spatio_only
 
     model_spec = get_model_spec(args.model)
     print(
         "Configuration: "
         f"Model={model_spec.id}, "
         f"Temporal Calib={args.calib_temp}, "
-        f"SpatioTemporal Calib={args.calib_stemp}"
+        f"SpatioTemporal Calib={args.calib_stemp}, "
+        f"SpatioOnly Calib={calib_spatio_only}"
     )
 
     # --- 0. Setup Experiment Directory ---
@@ -219,6 +239,7 @@ def main():
         "experiment_name": args.name,
         "calib_temp": args.calib_temp,
         "calib_stemp": args.calib_stemp,
+        "calib_spatio_only": calib_spatio_only,
         "alpha": ALPHA,
         "weeks": NUMBER_OF_WEEKS,
         "model": MODEL_NAME,
@@ -246,7 +267,8 @@ def main():
     
     # Calibration Sets (Conditional Load)
     calib_temp_df = load_split("temporal_train") if args.calib_temp else pd.DataFrame()
-    calib_spatio_df = load_split("spatiotemporal_train") if args.calib_stemp else pd.DataFrame()
+    calib_spatio_enabled = args.calib_stemp or calib_spatio_only
+    calib_spatio_df = load_split("spatiotemporal_train") if calib_spatio_enabled else pd.DataFrame()
     
     # Evaluation Sets (Always Load)
     eval_temp_df = load_split("temporal_test")
@@ -264,7 +286,7 @@ def main():
     print(f"Split sizes:")
     print(f"  Train: {len(train_df)}")
     print(f"  Calib Temporal: {len(calib_temp_df)} (Enabled: {args.calib_temp})")
-    print(f"  Calib SpatioTemp: {len(calib_spatio_df)} (Enabled: {args.calib_stemp})")
+    print(f"  Calib SpatioTemp: {len(calib_spatio_df)} (Enabled: {calib_spatio_enabled})")
     print(f"  Eval Temporal: {len(eval_temp_df)}")
     print(f"  Eval SpatioTemp: {len(eval_spatio_df)}")
 
@@ -305,7 +327,7 @@ def main():
             Xs_calib.append(X_calib_temp)
             ys_calib.append(calib_temp_df[target_col].values)
             
-        if args.calib_stemp:
+        if args.calib_stemp or calib_spatio_only:
             Xs_calib.append(X_calib_spatio)
             ys_calib.append(calib_spatio_df[target_col].values)
             
@@ -366,7 +388,7 @@ def main():
             
             # Compute Raw Metrics (Per Station)
             metrics_df = compute_per_station_metrics_robust(
-                y_true_std, y_pred_std, stations, y_lower_std, y_upper_std
+                y_true_std, y_pred_std, stations, y_lower_std, y_upper_std, ALPHA
             )
             
             # Add Context Columns
@@ -376,7 +398,9 @@ def main():
             all_raw_metrics.append(metrics_df)
             
             # Compute Summary
-            summary_df = summarize_metrics(metrics_df, MODEL_NAME, f"{dataset_source_name}_wk{i}")
+            summary_df = summarize_metrics(
+                metrics_df, MODEL_NAME, f"{dataset_source_name}_wk{i}", alpha=ALPHA
+            )
             summary_df["week"] = i
             summary_df["dataset"] = dataset_source_name
             all_summaries.append(summary_df)

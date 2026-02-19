@@ -32,8 +32,9 @@ MODEL_REGISTRY: Dict[str, ModelSpec] = {
         display_name="Quantile Random Forest",
         calibrated_name="Quantile Random Forest + CQR",
         init_kwargs={
-            "n_estimators": 500,
-            "min_samples_leaf": 1,
+            "n_estimators": 200,
+            "max_depth": 14,
+            "min_samples_leaf": 10,
             "n_jobs": -1,
             "random_state": 42,
         },

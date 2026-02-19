@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.base import BaseEstimator, RegressorMixin
-from sklearn.ensemble import RandomForestRegressor
+from quantile_forest import RandomForestQuantileRegressor
 
 
 class QuantileRandomForestRegressor(RegressorMixin, BaseEstimator):
@@ -13,7 +13,7 @@ class QuantileRandomForestRegressor(RegressorMixin, BaseEstimator):
         self.q_score = 0.0
 
     def fit(self, X, y):
-        self.model = RandomForestRegressor(**self.kwargs)
+        self.model = RandomForestQuantileRegressor(**self.kwargs)
         self.model.fit(X, y)
         return self
 
@@ -29,12 +29,6 @@ class QuantileRandomForestRegressor(RegressorMixin, BaseEstimator):
                 "Only quantiles [alpha/2, 1-alpha/2] are supported for calibrated intervals."
             )
 
-    def _predict_tree_matrix(self, X):
-        if self.model is None or not hasattr(self.model, "estimators_"):
-            raise RuntimeError("Model is not fitted.")
-        tree_preds = [tree.predict(X) for tree in self.model.estimators_]
-        return np.stack(tree_preds, axis=1)
-
     def calibrate(self, X_calib, y_calib):
         preds = self.predict(
             X_calib, quantiles=[self.alpha / 2, 1 - self.alpha / 2], calibrate=False
@@ -49,18 +43,18 @@ class QuantileRandomForestRegressor(RegressorMixin, BaseEstimator):
 
     def predict(self, X, quantiles=None, calibrate=True):
         if quantiles is None or quantiles == "mean":
-            return self.model.predict(X)
+            return self.model.predict(X, quantiles="mean")
         if isinstance(quantiles, (list, tuple, np.ndarray)):
             self._validate_quantiles(quantiles)
-            tree_matrix = self._predict_tree_matrix(X)
-            lower = np.quantile(tree_matrix, self.alpha / 2, axis=1)
-            upper = np.quantile(tree_matrix, 1 - self.alpha / 2, axis=1)
+            preds = self.model.predict(X, quantiles=[self.alpha / 2, 1 - self.alpha / 2])
+            lower = preds[:, 0]
+            upper = preds[:, 1]
 
             if calibrate and hasattr(self, "q_score"):
                 lower = lower - self.q_score
                 upper = upper + self.q_score
 
-                median = self.model.predict(X)
+                median = self.model.predict(X, quantiles="mean")
                 lower = np.maximum(0, lower)
                 upper = np.maximum(0, upper)
                 median = np.maximum(0, median)
