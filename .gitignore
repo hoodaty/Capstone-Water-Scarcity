@@ -1,5 +1,7 @@
 # Ignore the data folder and all its subdirectories and files
 data/
+figures/
+results/
 
 cmip6_downloads/
 benchmark_cmip6_vs_era5/
@@ -7,7 +9,8 @@ benchmark_cmip6_vs_era5/
 # Ignore the dataset folder and all its subdirectories and files
 dataset/
 
-models/
+models/*
+!models/*.py
 figures/
 .DS_Store
 
