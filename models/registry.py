@@ -3,6 +3,7 @@ from typing import Dict, Type
 
 from models.lgbm_cqr import LightGBMQuantileRegressor
 from models.quantile_rf import QuantileRandomForestRegressor
+from models.moment import MOMENTQuantileRegressor
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,13 @@ MODEL_REGISTRY: Dict[str, ModelSpec] = {
             "random_state": 42,
         },
     ),
+    "moment_cqr": ModelSpec(
+    id="moment_cqr",
+    display_name="MOMENT-CQR",
+    calibrated_name="MOMENT-CQR (Calibrated)",
+    cls=MOMENTQuantileRegressor,
+    init_kwargs={"model_name": "AutonLab/MOMENT-1-base", "epochs": 50, "batch_size": 32}
+)
 }
 
 

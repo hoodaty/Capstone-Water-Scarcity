@@ -315,7 +315,7 @@ def main():
         
         # A. Training
         model = model_spec.cls(alpha=ALPHA, **model_spec.init_kwargs)
-        model.fit(X_train, train_df[target_col])
+        model.fit(X_train.values, train_df[target_col].values)
         models[i] = model
         
         # B. Calibration
@@ -334,15 +334,22 @@ def main():
         if Xs_calib:
             X_calib_final = pd.concat(Xs_calib)
             y_calib_final = np.concatenate(ys_calib)
-            model.calibrate(X_calib_final, y_calib_final)
+            model.calibrate(X_calib_final.values, y_calib_final)
             calibrated_any = True
             print(f"  Calibrated on {len(X_calib_final)} samples. q_score={model.q_score:.3f}")
         else:
             print("  Skipping calibration.")
 
         # Save Model for this week
-        save_path = os.path.join(RESULTS_DIR, f"model_week{i}.joblib")
-        joblib.dump(model, save_path)
+        if "moment" in args.model.lower():
+            import torch
+            save_path = os.path.join(RESULTS_DIR, f"model_week{i}.pt")
+            # Save strictly the learned weights of the projection head
+            # The frozen MOMENT backbone does not need to be saved
+            torch.save(model.head.state_dict(), save_path)
+        else:
+            save_path = os.path.join(RESULTS_DIR, f"model_week{i}.joblib")
+            joblib.dump(model, save_path)
         print(f"  Week {i} model saved to {save_path}")
 
     if calibrated_any:
@@ -374,8 +381,8 @@ def main():
             y_true = source_df[target_col].values[indices]
             
             # Predictions
-            y_pred = models[i].predict(X, quantiles="mean")
-            y_quantiles = models[i].predict(X, quantiles=[ALPHA/2, 1-ALPHA/2])
+            y_pred = models[i].predict(X.values, quantiles="mean")
+            y_quantiles = models[i].predict(X.values, quantiles=[ALPHA/2, 1-ALPHA/2])
             y_lower = y_quantiles[:, 0]
             y_upper = y_quantiles[:, 1]
             
