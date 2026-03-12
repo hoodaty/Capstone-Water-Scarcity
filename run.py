@@ -208,6 +208,7 @@ def main():
     calib_spatio_only = args.calib_spatio_only
 
     model_spec = get_model_spec(args.model)
+    is_chronos_model = model_spec.id == "chronos_2"
     print(
         "Configuration: "
         f"Model={model_spec.id}, "
@@ -315,7 +316,10 @@ def main():
         
         # A. Training
         model = model_spec.cls(alpha=ALPHA, **model_spec.init_kwargs)
-        model.fit(X_train.values, train_df[target_col].values)
+        if is_chronos_model:
+            model.fit(train_df=train_df, target_col=target_col)
+        else:
+            model.fit(X_train.values, train_df[target_col].values)
         models[i] = model
         
         # B. Calibration
@@ -324,17 +328,20 @@ def main():
         ys_calib = []
         
         if args.calib_temp:
-            Xs_calib.append(X_calib_temp)
+            Xs_calib.append(calib_temp_df if is_chronos_model else X_calib_temp)
             ys_calib.append(calib_temp_df[target_col].values)
             
         if args.calib_stemp or calib_spatio_only:
-            Xs_calib.append(X_calib_spatio)
+            Xs_calib.append(calib_spatio_df if is_chronos_model else X_calib_spatio)
             ys_calib.append(calib_spatio_df[target_col].values)
             
         if Xs_calib:
             X_calib_final = pd.concat(Xs_calib)
             y_calib_final = np.concatenate(ys_calib)
-            model.calibrate(X_calib_final.values, y_calib_final)
+            if is_chronos_model:
+                model.calibrate(X_calib_final, y_calib_final, target_col=target_col)
+            else:
+                model.calibrate(X_calib_final.values, y_calib_final)
             calibrated_any = True
             print(f"  Calibrated on {len(X_calib_final)} samples. q_score={model.q_score:.3f}")
         else:
@@ -381,8 +388,13 @@ def main():
             y_true = source_df[target_col].values[indices]
             
             # Predictions
-            y_pred = models[i].predict(X.values, quantiles="mean")
-            y_quantiles = models[i].predict(X.values, quantiles=[ALPHA/2, 1-ALPHA/2])
+            if is_chronos_model:
+                pred_df = source_df.iloc[indices].copy()
+                y_pred = models[i].predict(pred_df, quantiles="mean")
+                y_quantiles = models[i].predict(pred_df, quantiles=[ALPHA / 2, 1 - ALPHA / 2])
+            else:
+                y_pred = models[i].predict(X.values, quantiles="mean")
+                y_quantiles = models[i].predict(X.values, quantiles=[ALPHA/2, 1-ALPHA/2])
             y_lower = y_quantiles[:, 0]
             y_upper = y_quantiles[:, 1]
             
