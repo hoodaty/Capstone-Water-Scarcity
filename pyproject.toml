@@ -18,6 +18,7 @@ dependencies = [
     "lightgbm==4.5.0",
     "mapie==0.9.1",
     "matplotlib==3.9.2",
+    "momentfm",
     "nbformat>=4.2.0",
     "optuna>=4.7.0",
     "osmnx==2.0.1",
@@ -42,3 +43,6 @@ dependencies = [
     "tslearn>=0.8.0",
     "xarray>=2024.10.0",
 ]
+
+[tool.uv.sources]
+momentfm = { git = "https://github.com/moment-timeseries-foundation-model/moment.git" }
