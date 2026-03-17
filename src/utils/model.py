@@ -85,7 +85,7 @@ def wis_score(
     if np.any(above):
         score[above] += (y[above] - upper[above])
 
-    denom = 0.5 + (alpha / 2.0)
+    denom = 1.5
     return score / denom
 
 
