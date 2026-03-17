@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, Type
 
+from models.catboost_cqr import CatBoostQuantileRegressor
 from models.lgbm_cqr import LightGBMQuantileRegressor
 from models.quantile_rf import QuantileRandomForestRegressor
 
@@ -37,6 +38,20 @@ MODEL_REGISTRY: Dict[str, ModelSpec] = {
             "min_samples_leaf": 10,
             "n_jobs": -1,
             "random_state": 42,
+        },
+    ),
+    "catboost_cqr": ModelSpec(
+        id="catboost_cqr",
+        cls=CatBoostQuantileRegressor,
+        display_name="CatBoost (Quantile)",
+        calibrated_name="CatBoost+CQR",
+        init_kwargs={
+            "iterations": 500,
+            "learning_rate": 0.05,
+            "depth": 6,
+            "random_seed": 42,
+            "thread_count": -1,
+            "allow_writing_files": False,
         },
     ),
 }
