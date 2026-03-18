@@ -19,7 +19,7 @@ MODEL_REGISTRY: Dict[str, ModelSpec] = {
     "lgbm_cqr": ModelSpec(
         id="lgbm_cqr",
         cls=LightGBMQuantileRegressor,
-        display_name="LightGBM (Quantile)",
+        display_name="LightGBM",
         calibrated_name="LightGBM+CQR",
         init_kwargs={
             "n_estimators": 500,
@@ -27,11 +27,11 @@ MODEL_REGISTRY: Dict[str, ModelSpec] = {
             "num_leaves": 31,
         },
     ),
-    "quantile_rf": ModelSpec(
-        id="quantile_rf",
+    "qrf_cqr": ModelSpec(
+        id="qrf_cqr",
         cls=QuantileRandomForestRegressor,
-        display_name="Quantile Random Forest",
-        calibrated_name="Quantile Random Forest + CQR",
+        display_name="QRF",
+        calibrated_name="QRF+CQR",
         init_kwargs={
             "n_estimators": 200,
             "max_depth": 14,
@@ -43,7 +43,7 @@ MODEL_REGISTRY: Dict[str, ModelSpec] = {
     "catboost_cqr": ModelSpec(
         id="catboost_cqr",
         cls=CatBoostQuantileRegressor,
-        display_name="CatBoost (Quantile)",
+        display_name="CatBoost",
         calibrated_name="CatBoost+CQR",
         init_kwargs={
             "iterations": 500,
