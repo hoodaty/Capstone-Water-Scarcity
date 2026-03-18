@@ -16,9 +16,9 @@ class CatBoostQuantileRegressor(QuantileRegressorBase):
 
     def fit(self, X, y):
         self.models = {
-            "lower":  self._make_model(self.alpha / 2).fit(X, y),
+            "lower": self._make_model(self.alpha / 2).fit(X, y),
             "median": self._make_model(0.5).fit(X, y),
-            "upper":  self._make_model(1.0 - self.alpha / 2).fit(X, y),
+            "upper": self._make_model(1.0 - self.alpha / 2).fit(X, y),
         }
         return self
 
@@ -32,5 +32,7 @@ class CatBoostQuantileRegressor(QuantileRegressorBase):
         lower = self.models["lower"].predict(X)
         upper = self.models["upper"].predict(X)
         if calibrate:
-            lower, upper = self._apply_cqr(lower, upper, self.models["median"].predict(X))
+            lower, upper = self._apply_cqr(
+                lower, upper, self.models["median"].predict(X)
+            )
         return np.column_stack([lower, upper])

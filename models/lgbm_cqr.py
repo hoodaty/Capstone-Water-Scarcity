@@ -18,9 +18,9 @@ class LightGBMQuantileRegressor(QuantileRegressorBase):
             ).fit(X, y)
 
         self.models = {
-            "lower":  _train(self.alpha / 2),
+            "lower": _train(self.alpha / 2),
             "median": _train(0.5),
-            "upper":  _train(1.0 - self.alpha / 2),
+            "upper": _train(1.0 - self.alpha / 2),
         }
         return self
 
@@ -41,9 +41,9 @@ class LightGBMQuantileRegressor(QuantileRegressorBase):
             if quantiles is None or quantiles == "mean":
                 return self.models["median"].predict(X)
             self._validate_quantiles(quantiles)
-            lower  = self.models["lower"].predict(X)
+            lower = self.models["lower"].predict(X)
             median = self.models["median"].predict(X)
-            upper  = self.models["upper"].predict(X)
+            upper = self.models["upper"].predict(X)
         if calibrate:
             lower, upper = self._apply_cqr(lower, upper, median)
         return np.column_stack([lower, upper])

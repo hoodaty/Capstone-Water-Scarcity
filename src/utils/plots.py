@@ -1,5 +1,6 @@
 """Preprocessing utilities for spatial-temporal interpolation and data merging."""
-import os
+
+from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.dates import MonthLocator, DateFormatter
@@ -243,17 +244,18 @@ def plot_water_flow_predictions(
             date = pd.Timestamp.now().strftime("%d-%m-%Y_%H-%M")
 
             # Calculate absolute path to project root (src/utils/plots.py -> src/utils -> src -> root)
-            current_file_path = os.path.abspath(__file__)
-            project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_file_path)))
+            current_file_path = Path(__file__).resolve()
+            project_root = current_file_path.parent.parent.parent
 
-            save_dir = os.path.join(project_root, "figures", "models")
-            os.makedirs(save_dir, exist_ok=True)
+            save_dir = project_root / "figures" / "models"
+            save_dir.mkdir(parents=True, exist_ok=True)
 
-            save_path = os.path.join(save_dir, f"{prefixe}_{date}_wf_predictions.png")
+            save_path = save_dir / f"{prefixe}_{date}_wf_predictions.png"
         else:
-            save_dir = os.path.dirname(save_path)
-            if save_dir:
-                os.makedirs(save_dir, exist_ok=True)
+            save_path = Path(save_path)
+            save_dir = save_path.parent
+            if save_dir.name:
+                save_dir.mkdir(parents=True, exist_ok=True)
 
         fig.savefig(save_path)
         plt.close(fig)

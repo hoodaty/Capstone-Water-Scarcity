@@ -12,7 +12,9 @@ class QuantileRegressorBase(RegressorMixin, BaseEstimator):
 
     def _validate_quantiles(self, quantiles) -> None:
         if len(quantiles) != 2:
-            raise ValueError("quantiles must contain exactly two values: [alpha/2, 1-alpha/2].")
+            raise ValueError(
+                "quantiles must contain exactly two values: [alpha/2, 1-alpha/2]."
+            )
         expected = np.array([self.alpha / 2, 1 - self.alpha / 2], dtype=float)
         if not np.allclose(np.array(quantiles, dtype=float), expected, atol=1e-8):
             raise ValueError(
@@ -21,7 +23,9 @@ class QuantileRegressorBase(RegressorMixin, BaseEstimator):
 
     def calibrate(self, X_calib, y_calib) -> None:
         """Compute the CQR conformity score from a held-out calibration set."""
-        preds = self.predict(X_calib, quantiles=[self.alpha / 2, 1 - self.alpha / 2], calibrate=False)
+        preds = self.predict(
+            X_calib, quantiles=[self.alpha / 2, 1 - self.alpha / 2], calibrate=False
+        )
         scores = np.maximum(preds[:, 0] - y_calib, y_calib - preds[:, 1])
         self.q_score = float(np.quantile(scores, 1 - self.alpha))
 
@@ -33,8 +37,8 @@ class QuantileRegressorBase(RegressorMixin, BaseEstimator):
         upper = upper + self.q_score
 
         # Water flow is non-negative.
-        lower  = np.maximum(0.0, lower)
-        upper  = np.maximum(0.0, upper)
+        lower = np.maximum(0.0, lower)
+        upper = np.maximum(0.0, upper)
         median = np.maximum(0.0, median)
 
         # Fix quantile crossing: collapse to midpoint.

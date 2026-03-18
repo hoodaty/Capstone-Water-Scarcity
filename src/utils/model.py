@@ -1,4 +1,5 @@
 """Preprocessing utilities for spatial-temporal interpolation and data merging."""
+
 import os
 import re
 import random
@@ -41,26 +42,6 @@ def standardize_values(
     return out
 
 
-def winkler_score(y: np.ndarray, lower: np.ndarray, upper: np.ndarray, alpha: float) -> np.ndarray:
-    """Compute Winkler score for a (1 - alpha) interval."""
-    y = np.asarray(y, dtype=float)
-    lower = np.asarray(lower, dtype=float)
-    upper = np.asarray(upper, dtype=float)
-
-    width = upper - lower
-    score = width.copy()
-
-    below = y < lower
-    above = y > upper
-
-    if np.any(below):
-        score[below] += (2.0 / alpha) * (lower[below] - y[below])
-    if np.any(above):
-        score[above] += (2.0 / alpha) * (y[above] - upper[above])
-
-    return score
-
-
 def wis_score(
     y: np.ndarray,
     lower: np.ndarray,
@@ -73,20 +54,18 @@ def wis_score(
     lower = np.asarray(lower, dtype=float)
     upper = np.asarray(upper, dtype=float)
     median = np.asarray(median, dtype=float)
-
     width = upper - lower
-    score = 0.5 * np.abs(y - median) + (alpha / 2.0) * width
-
     below = y < lower
     above = y > upper
-
+    winkler = width.copy()
     if np.any(below):
-        score[below] += (lower[below] - y[below])
+        winkler[below] += (2.0 / alpha) * (lower[below] - y[below])
     if np.any(above):
-        score[above] += (y[above] - upper[above])
+        winkler[above] += (2.0 / alpha) * (y[above] - upper[above])
 
-    denom = 1.5
-    return score / denom
+    mae_median = np.abs(y - median)
+    score = (alpha / 2.0) * winkler + 0.5 * mae_median
+    return score
 
 
 def split_dataset(
@@ -117,7 +96,7 @@ def split_dataset(
     if test_stations is not None:
         train_stations = [s for s in station_code if s not in test_stations]
     else:
-        test_stations = station_code[int(len(station_code) * p):]
+        test_stations = station_code[int(len(station_code) * p) :]
         train_stations = station_code[: int(len(station_code) * p)]
 
     test_temporal = ds[pd.to_datetime(ds.index) >= pd.to_datetime(time)]
@@ -209,7 +188,6 @@ def compute_per_station_metrics(
             - coverage
             - scaled_interval_size: Average size of the prediction interval
             - log_likelihood: Gaussian negative log-likelihood.
-            - winkler: Winkler score for interval quality.
             - wis: Weighted interval score.
             - coverage_gap: Coverage minus (1 - alpha).
     """
@@ -241,7 +219,6 @@ def compute_per_station_metrics(
 
             coverage_s = np.mean((y_true_s >= y_lower_s) & (y_true_s <= y_upper_s))
             interval_size_s = np.mean(y_upper_s - y_lower_s)
-            winkler_s = np.mean(winkler_score(y_true_s, y_lower_s, y_upper_s, alpha))
             wis_s = np.mean(wis_score(y_true_s, y_lower_s, y_upper_s, y_pred_s, alpha))
             coverage_gap_s = coverage_s - (1 - alpha)
         else:
@@ -254,7 +231,6 @@ def compute_per_station_metrics(
 
             coverage_s = np.nan
             interval_size_s = np.nan
-            winkler_s = np.nan
             wis_s = np.nan
             coverage_gap_s = np.nan
 
@@ -267,7 +243,6 @@ def compute_per_station_metrics(
                 "coverage": coverage_s,
                 "scaled_interval_size": interval_size_s,
                 "log_likelihood": nll_s,
-                "winkler": winkler_s,
                 "wis": wis_s,
                 "coverage_gap": coverage_gap_s,
             }
@@ -293,7 +268,7 @@ def summarize_metrics(
     pd.DataFrame
         A DataFrame containing the final model-level metrics
         (scaled RMSE, log-likelihood, scaled MAE, coverage,
-        scaled interval size, winkler, wis, coverage gap).
+        scaled interval size, wis, coverage gap).
     """
     rmse_final = np.nanmean(metrics["scaled_rmse"])
     mae_final = np.nanmean(metrics["scaled_mae"])
@@ -311,10 +286,7 @@ def summarize_metrics(
     else:
         coverage_gap_final = coverage_final - (1 - alpha)
 
-    winkler_final = np.nan
     wis_final = np.nan
-    if "winkler" in metrics:
-        winkler_final = np.nanmean(metrics["winkler"])
     if "wis" in metrics:
         wis_final = np.nanmean(metrics["wis"])
 
@@ -327,7 +299,6 @@ def summarize_metrics(
         "coverage": [coverage_final],
         "scaled_interval_size": [interval_size_final],
         "coverage_gap": [coverage_gap_final],
-        "winkler": [winkler_final],
         "wis": [wis_final],
     }
     return pd.DataFrame(data)

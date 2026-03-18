@@ -1,5 +1,6 @@
 """Saving utilities."""
-import os
+
+from pathlib import Path
 import matplotlib.pyplot as plt
 
 
@@ -13,6 +14,6 @@ def save_or_create(plt: plt.Figure, save_path: str):
     Returns:
         None
     """
-    if not os.path.exists(os.path.dirname(save_path)):
-        os.makedirs(os.path.dirname(save_path))
-    plt.savefig(save_path)
+    save_p = Path(save_path)
+    save_p.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(save_p)

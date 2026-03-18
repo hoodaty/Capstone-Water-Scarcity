@@ -21,5 +21,7 @@ class QuantileRandomForestRegressor(QuantileRegressorBase):
         preds = self.model.predict(X, quantiles=[self.alpha / 2, 1 - self.alpha / 2])
         lower, upper = preds[:, 0], preds[:, 1]
         if calibrate:
-            lower, upper = self._apply_cqr(lower, upper, self.model.predict(X, quantiles="mean"))
+            lower, upper = self._apply_cqr(
+                lower, upper, self.model.predict(X, quantiles="mean")
+            )
         return np.column_stack([lower, upper])

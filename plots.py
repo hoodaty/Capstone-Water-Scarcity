@@ -3,317 +3,349 @@ import json
 import os
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
 from cycler import cycler
 
-CALIBRATION_ORDER = ["none", "temp", "spatio", "mixed"]
+SPLITS = {
+    "Eval_Temporal": "Temporal Test\n(Seen Stations)",
+    "Eval_SpatioTemporal": "Spatio-Temporal Test\n(Unseen Stations)",
+}
+PANEL_LABELS = ["A", "B"]
 
-PLOT_COLORS = [
-    "#4C78A8",
-    "#F58518",
-    "#54A24B",
-    "#E45756",
-    "#B279A2",
-    "#FF9DA6",
-    "#9D755D",
-    "#72B7B2",
+CALIBRATION_ORDER = ["none", "temp", "mixed", "spatio"]
+
+METRICS = [
+    ("scaled_rmse", "Scaled RMSE", "↓ better"),
+    ("scaled_mae", "Scaled MAE", "↓ better"),
+    ("coverage", "Coverage", "target 0.90"),
+    ("coverage_gap", "Coverage Gap", "target 0"),
+    ("scaled_interval_size", "Scaled Interval Width", "↓ better"),
+    ("wis", "WIS", "↓ better"),
+]
+
+# Muted, colorblind-friendly palette
+_CALIB_COLORS = {
+    "none": "#5778a4",
+    "temp": "#e49444",
+    "mixed": "#56a64b",
+    "spatio": "#d1615d",
+}
+_FALLBACK_COLORS = [
+    "#5778a4",
+    "#e49444",
+    "#56a64b",
+    "#d1615d",
+    "#b279a2",
+    "#8c613c",
+    "#85b6b2",
+    "#e15759",
 ]
 
 
-def apply_plot_style():
+def apply_style():
     plt.rcParams.update(
         {
-            "figure.dpi": 160,
+            "figure.dpi": 150,
             "savefig.dpi": 300,
+            "font.family": "sans-serif",
             "font.size": 11,
-            "axes.titlesize": 12,
-            "axes.labelsize": 11,
+            "axes.titlesize": 11,
+            "axes.titleweight": "semibold",
+            "axes.labelsize": 10,
             "axes.linewidth": 0.8,
-            "legend.fontsize": 9,
-            "legend.title_fontsize": 9,
             "axes.spines.top": False,
             "axes.spines.right": False,
             "axes.grid": True,
+            "axes.grid.axis": "y",
             "grid.linestyle": "--",
-            "grid.alpha": 0.3,
+            "grid.alpha": 0.4,
+            "grid.linewidth": 0.6,
             "axes.axisbelow": True,
-            "axes.prop_cycle": cycler(color=PLOT_COLORS),
+            "xtick.bottom": False,
+            "legend.fontsize": 9,
+            "legend.title_fontsize": 9,
+            "legend.framealpha": 0.9,
+            "legend.edgecolor": "#cccccc",
         }
     )
 
 
-def infer_calibration_mode(config: dict) -> str:
-    calib_temp = bool(config.get("calib_temp", False))
-    calib_stemp = bool(config.get("calib_stemp", False))
-    calib_spatio_only = bool(config.get("calib_spatio_only", False))
-    if "calib_temp_ratio" in config:
-        calib_temp = float(config["calib_temp_ratio"]) > 0
-    if "calib_stemp_ratio" in config:
-        calib_stemp = float(config["calib_stemp_ratio"]) > 0
-
-    if calib_spatio_only:
+def infer_calibration(config: dict) -> str:
+    if config.get("calib_spatio_only"):
         return "spatio"
-    if calib_stemp:
+    if config.get("calib_stemp"):
         return "mixed"
-    if calib_temp:
+    if config.get("calib_temp"):
         return "temp"
     return "none"
 
 
-def load_results(result_dirs):
-    data = []
-    
+def load_results(result_dirs: list[str]) -> pd.DataFrame:
+    rows = []
     for rdir in result_dirs:
         config_path = os.path.join(rdir, "config.json")
         metrics_path = os.path.join(rdir, "metrics_summary.csv")
-        
         if not os.path.exists(config_path) or not os.path.exists(metrics_path):
-            print(f"Skipping {rdir}: Missing config.json or metrics_summary.csv")
+            print(f"Skipping {rdir}: missing config.json or metrics_summary.csv")
             continue
-            
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config = json.load(f)
-            
-        # Determine label: Experiment Name > Folder Name
-        exp_name = config.get("experiment_name", "")
-        if not exp_name:
-            exp_name = os.path.basename(os.path.normpath(rdir))
-
+        exp_name = config.get("experiment_name") or os.path.basename(
+            os.path.normpath(rdir)
+        )
         model_id = config.get("model_id", config.get("model", "unknown"))
-        calibration = infer_calibration_mode(config)
-        
+        calibration = infer_calibration(config)
+
         df = pd.read_csv(metrics_path)
         df["experiment"] = exp_name
         df["model_id"] = model_id
         df["calibration"] = calibration
-        df["label"] = f"{exp_name} | {model_id} | {calibration}"
-        data.append(df)
-        
-    if not data:
-        raise ValueError("No valid results found.")
-        
-    return pd.concat(data, ignore_index=True)
+        df["label"] = f"{model_id} | {calibration}"
+        rows.append(df)
 
-def format_value(metric_col: str, value: float) -> str:
-    if metric_col in {"coverage", "coverage_gap"}:
-        return f"{value:.3f}"
-    return f"{value:.2f}"
+    if not rows:
+        raise ValueError("No valid results found in the provided directories.")
+    return pd.concat(rows, ignore_index=True)
 
 
-def annotate_bars(ax, bars, metric_col: str):
-    for bar in bars:
-        height = bar.get_height()
-        if np.isnan(height):
-            continue
-        label = format_value(metric_col, height)
-        offset = 3 if height >= 0 else -9
-        ax.annotate(
-            label,
-            xy=(bar.get_x() + bar.get_width() / 2, height),
-            xytext=(0, offset),
-            textcoords="offset points",
-            ha="center",
-            va="bottom" if height >= 0 else "top",
-            fontsize=8,
-        )
+def _ylim(df: pd.DataFrame, col: str) -> tuple[float, float] | None:
+    if col == "coverage":
+        return (0.0, 1.05)
 
-
-def compute_metric_ylim(df, metric_col: str):
-    values = df[metric_col].to_numpy(dtype=float)
+    values = df[col].to_numpy(dtype=float)
     values = values[np.isfinite(values)]
-
-    if metric_col == "coverage":
-        return (0.0, 1.0)
-
     if values.size == 0:
         return None
 
-    if metric_col == "coverage_gap":
-        max_abs = float(np.max(np.abs(values)))
-        bound = max(0.02, max_abs * 1.1)
+    if col == "coverage_gap":
+        bound = max(0.05, float(np.max(np.abs(values))) * 1.25)
         return (-bound, bound)
 
-    vmin = float(np.min(values))
-    vmax = float(np.max(values))
-    if np.isclose(vmin, vmax):
-        pad = max(abs(vmax) * 0.1, 1e-3)
-    else:
-        pad = (vmax - vmin) * 0.12
-    lower = max(0.0, vmin - pad)
-    upper = vmax + pad
-    return (lower, upper)
+    vmin, vmax = float(values.min()), float(values.max())
+    pad = max(abs(vmax) * 0.1, 1e-3) if np.isclose(vmin, vmax) else (vmax - vmin) * 0.18
+    return (max(0.0, vmin - pad * 0.5), vmax + pad)
 
 
-def plot_metric(df, dataset_name, metric_col, ylabel, title, ax, label_col, legend_title, palette):
-    # Filter for dataset
-    subset = df[df["dataset"] == dataset_name].copy()
-    
+def _bar_color(label: str, idx: int, label_col: str) -> str:
+    if label_col == "calibration":
+        return _CALIB_COLORS.get(label, _FALLBACK_COLORS[idx % len(_FALLBACK_COLORS)])
+    return _FALLBACK_COLORS[idx % len(_FALLBACK_COLORS)]
+
+
+def plot_panel(
+    ax,
+    df: pd.DataFrame,
+    split: str,
+    col: str,
+    ylabel: str,
+    hint: str,
+    label_col: str,
+    panel_letter: str,
+):
+    subset = df[df["dataset"] == split].copy()
+    title = SPLITS.get(split, split)
+
+    # Panel label + title as a styled header
+    ax.set_title(
+        f"({panel_letter})  {title}",
+        loc="left",
+        fontsize=10,
+        fontweight="semibold",
+        pad=8,
+    )
+
     if subset.empty:
-        ax.set_title(title)
-        ax.text(0.5, 0.5, "No data", ha="center", va="center", transform=ax.transAxes)
+        ax.text(
+            0.5,
+            0.5,
+            "No data",
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
+            color="gray",
+        )
         return
 
-    # Sort by week and label
-    subset = subset.sort_values(["week", label_col])
-    
     weeks = sorted(subset["week"].unique())
-    labels = subset[label_col].unique()
+    labels = subset[label_col].unique().tolist()
     if label_col == "calibration":
         labels = [c for c in CALIBRATION_ORDER if c in labels]
-    
-    # Bar Width configuration
-    n_exp = len(labels)
-    bar_width = 0.8 / n_exp
-    indices = np.arange(len(weeks))
-    
+
+    n = len(labels)
+    bar_width = min(0.72 / n, 0.26)
+    x = np.arange(len(weeks))
+    offsets = (np.arange(n) - (n - 1) / 2) * (bar_width + 0.02)
+
     for i, label in enumerate(labels):
-        exp_data = subset[subset[label_col] == label]
-        
-        # Align data to weeks ensuring missing weeks don't break plot
-        # Reindex to ensure shape matches 'indices'
-        exp_data = exp_data.set_index("week").reindex(weeks)
-        
-        values = exp_data[metric_col].values
-        
-        # Offset bars
-        x_pos = indices + (i - n_exp/2 + 0.5) * bar_width
-        
-        bars = ax.bar(
-            x_pos,
+        values = (
+            subset[subset[label_col] == label]
+            .set_index("week")
+            .reindex(weeks)[col]
+            .values
+        )
+        color = _bar_color(label, i, label_col)
+        ax.bar(
+            x + offsets[i],
             values,
             width=bar_width,
             label=label,
-            alpha=0.9,
+            color=color,
+            alpha=0.88,
             edgecolor="white",
-            linewidth=0.6,
-            color=palette[i % len(palette)],
+            linewidth=0.5,
         )
-        annotate_bars(ax, bars, metric_col)
-        
-    ax.set_xlabel("Forecast Horizon (Weeks)")
-    ax.set_ylabel(ylabel)
-    ax.set_title(title)
-    ax.set_xticks(indices)
-    ax.set_xticklabels([f"Week {w}" for w in weeks])
-    ax.grid(axis='y', linestyle='--', alpha=0.5)
+
+    ax.set_xlabel("Forecast horizon", fontsize=9, labelpad=4)
+    ax.set_ylabel(f"{ylabel}  ({hint})", fontsize=9)
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"W{w + 1}" for w in weeks], fontsize=10)
+    ax.tick_params(axis="y", labelsize=9)
+
+    # Reference lines
+    if col == "coverage":
+        ax.axhline(
+            0.90,
+            color="#333333",
+            linestyle="--",
+            linewidth=1.2,
+            zorder=3,
+            label="Target (0.90)",
+        )
+    if col == "coverage_gap":
+        ax.axhline(
+            0.0,
+            color="#333333",
+            linestyle="--",
+            linewidth=1.2,
+            zorder=3,
+            label="Target (0)",
+        )
+
+    # Subtle zero-baseline for coverage_gap
+    if col == "coverage_gap":
+        ax.axhline(0.0, color="#aaaaaa", linewidth=0.5, zorder=2)
+
+    ax.yaxis.set_major_formatter(
+        mticker.FormatStrFormatter(
+            "%.2f" if col in {"coverage", "coverage_gap"} else "%.1f"
+        )
+    )
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Compare multiple experiment results.")
-    parser.add_argument("results_dirs", nargs='+', help="List of result directories to compare")
-    parser.add_argument("--output", type=str, default="figures/comparison", help="Output directory for plots")
+    parser = argparse.ArgumentParser(description="Plot and compare experiment results.")
+    parser.add_argument(
+        "results_dirs", nargs="*", help="Result directories to compare."
+    )
+    parser.add_argument(
+        "--results-dir",
+        type=str,
+        default=None,
+        help="Auto-discover all experiment subdirectories inside this folder.",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="figures/comparison",
+        help="Output directory for plots.",
+    )
     parser.add_argument(
         "--group-by",
         type=str,
-        default="none",
-        choices=["none", "model"],
-        help="Group comparisons by model id.",
+        default="model",
+        choices=["model", "all"],
+        help="'model': one figure per model. 'all': all experiments in one figure.",
     )
     args = parser.parse_args()
-    
-    apply_plot_style()
+
+    dirs = list(args.results_dirs)
+    if args.results_dir:
+        root = args.results_dir.rstrip("/")
+        dirs += [
+            os.path.join(root, d)
+            for d in sorted(os.listdir(root))
+            if os.path.isdir(os.path.join(root, d))
+        ]
+    if not dirs:
+        parser.error(
+            "Provide result directories as positional args or via --results-dir."
+        )
+
+    apply_style()
     os.makedirs(args.output, exist_ok=True)
-    
-    print(f"Loading results from {len(args.results_dirs)} directories...")
-    df = load_results(args.results_dirs)
-    
-    print(f"Found experiments: {df['experiment'].unique()}")
-    
-    # Define Metrics to Plot
-    metrics = [
-        ("scaled_rmse", "Scaled RMSE (Lower is Better)"),
-        ("coverage", "Coverage (Target: 0.90)"),
-        ("coverage_gap", "Coverage Gap (Target: 0)"),
-        ("scaled_interval_size", "Interval Width (Lower is Better)"),
-        ("winkler", "Winkler Score (Lower is Better)"),
-        ("wis", "WIS (Lower is Better)"),
-    ]
 
-    metrics = [(col, label) for col, label in metrics if col in df.columns]
-    metric_ylims = {col: compute_metric_ylim(df, col) for col, _ in metrics}
-    
-    if args.group_by == "model":
-        groups = sorted(df["model_id"].unique())
-        label_col = "calibration"
-    else:
-        groups = [None]
-        label_col = "label"
+    df = load_results(dirs)
+    print(
+        f"Loaded {len(df['experiment'].unique())} experiment(s): {sorted(df['experiment'].unique())}"
+    )
 
-    dataset_titles = {
-        "Eval_Temporal": "Temporal Test (Seen Stations)",
-        "Eval_SpatioTemporal": "Spatio-Temporal Test (Unseen Stations)",
-    }
+    available = [(col, lbl, hint) for col, lbl, hint in METRICS if col in df.columns]
+    ylims = {col: _ylim(df, col) for col, _, _ in available}
 
-    for model_id in groups:
-        if model_id is None:
-            df_group = df
-            suffix = ""
-            label_title = "Experiment"
-        else:
-            df_group = df[df["model_id"] == model_id]
-            suffix = f"_{model_id}"
-            label_title = f"Calibration ({model_id})"
+    groups = sorted(df["model_id"].unique()) if args.group_by == "model" else [None]
+    label_col = "calibration" if args.group_by == "model" else "label"
 
-        if df_group.empty:
-            print(f"No results found for model group: {model_id}")
+    for group in groups:
+        df_g = df if group is None else df[df["model_id"] == group]
+        suffix = f"_{group}" if group else ""
+        legend_title = f"Calibration" if group else "Experiment"
+        model_subtitle = f" — {group}" if group else ""
+
+        if df_g.empty:
             continue
 
-        for col, label in metrics:
-            fig, axes = plt.subplots(1, 2, figsize=(12.8, 5.2), sharey=True)
-
-            plot_metric(
-                df_group,
-                "Eval_Temporal",
-                col,
-                label,
-                dataset_titles["Eval_Temporal"],
-                axes[0],
-                label_col,
-                label_title,
-                PLOT_COLORS,
-            )
-            plot_metric(
-                df_group,
-                "Eval_SpatioTemporal",
-                col,
-                label,
-                dataset_titles["Eval_SpatioTemporal"],
-                axes[1],
-                label_col,
-                label_title,
-                PLOT_COLORS,
+        for col, ylabel, hint in available:
+            fig, axes = plt.subplots(
+                1,
+                2,
+                figsize=(13, 4.8),
+                sharey=False,
+                gridspec_kw={"wspace": 0.38},
             )
 
+            for ax, (split, _), letter in zip(axes, SPLITS.items(), PANEL_LABELS):
+                plot_panel(ax, df_g, split, col, ylabel, hint, label_col, letter)
+                lim = ylims.get(col)
+                if lim:
+                    ax.set_ylim(*lim)
+
+            # Single shared legend, placed to the right of the second panel
+            handles, labels = [], []
             for ax in axes:
-                ax.set_xlabel("Forecast Horizon (Weeks)")
-                if col == "coverage":
-                    ax.axhline(0.90, color="#2E2E2E", linestyle="--", linewidth=1.5, label="Target (90%)")
-                if col == "coverage_gap":
-                    ax.axhline(0.0, color="#2E2E2E", linestyle="--", linewidth=1.5, label="Target (0)")
-                ylim = metric_ylims.get(col)
-                if ylim is not None:
-                    ax.set_ylim(*ylim)
+                h, l = ax.get_legend_handles_labels()
+                for handle, lab in zip(h, l):
+                    if lab not in labels:
+                        handles.append(handle)
+                        labels.append(lab)
 
-            axes[1].set_ylabel("")
-            handles, labels = axes[0].get_legend_handles_labels()
-            if not handles:
-                handles, labels = axes[1].get_legend_handles_labels()
             fig.legend(
                 handles,
                 labels,
-                title=label_title,
-                loc="lower center",
-                bbox_to_anchor=(0.5, 0.0),
-                ncol=max(1, min(5, len(labels))),
-                frameon=False,
+                title=legend_title,
+                loc="center right",
+                bbox_to_anchor=(1.01, 0.5),
+                frameon=True,
+                borderpad=0.8,
             )
-            fig.suptitle(label, fontsize=13, fontweight="semibold")
-            fig.tight_layout(rect=[0, 0.1, 1, 0.93])
 
-            save_path = os.path.join(args.output, f"metric_{col}{suffix}.png")
-            plt.savefig(save_path)
-            print(f"Saved {save_path}")
+            fig.suptitle(
+                f"{ylabel}{model_subtitle}",
+                fontsize=13,
+                fontweight="bold",
+                x=0.47,
+                y=1.02,
+            )
+            fig.subplots_adjust(
+                left=0.08, right=0.83, top=0.90, bottom=0.13, wspace=0.38
+            )
+
+            path = os.path.join(args.output, f"{col}{suffix}.png")
+            plt.savefig(path, bbox_inches="tight")
             plt.close()
+            print(f"Saved {path}")
+
 
 if __name__ == "__main__":
     main()

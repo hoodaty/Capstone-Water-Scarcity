@@ -1,4 +1,5 @@
 """Predition functions for different model types."""
+
 from typing import Callable, List, Any
 import numpy as np
 
