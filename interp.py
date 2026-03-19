@@ -32,22 +32,6 @@ class FeatureCluster:
     importance: float = 0.0
 
 
-def get_calibration_data(config: dict, train_cols: list[str]) -> pd.DataFrame:
-    """Load the calibration data used during training based on config."""
-    calib_dfs = []
-    if config.get("calib_temp"):
-        calib_dfs.append(load_split("temporal_calib"))
-    if config.get("calib_stemp") or config.get("calib_spatio_only"):
-        calib_dfs.append(load_split("spatiotemporal_calib"))
-
-    if not calib_dfs:
-        calib_dfs.append(load_split("temporal_calib"))
-
-    df_cal = pd.concat(calib_dfs)
-    X_cal = build_features(df_cal, reference_columns=train_cols)
-    return X_cal
-
-
 def compute_ale(
     model_func: Callable[[pd.DataFrame], np.ndarray],
     X: pd.DataFrame,
@@ -121,7 +105,6 @@ def get_shap_values(wrapper: Any, X: pd.DataFrame, mode: str = "width") -> np.nd
             elif isinstance(sv, np.ndarray) and sv.ndim == 3:
                 return sv[:, :, -1] - sv[:, :, 0]
         else:
-            # Median is usually in the middle or index 1 for [low, med, high]
             if isinstance(sv, list): return sv[len(sv)//2]
             elif isinstance(sv, np.ndarray) and sv.ndim == 3: return sv[:, :, sv.shape[2]//2]
         return sv
@@ -141,30 +124,31 @@ def main():
 
     # Phase 1: Setup
     print(f"--- Phase 1: Context Definition (Mode: {args.mode}) ---")
-    config, wrapper, X_test, y_test, _, target_col, _ = prepare_analysis_data(args.results_dir, args.week)
+    # prepare_analysis_data returns the Spatio-Temporal Test Set (unseen stations)
+    config, wrapper, X_test_full, y_test, _, target_col, _ = prepare_analysis_data(args.results_dir, args.week)
     
-    train_cols = X_test.columns.tolist()
-    X_cal_full = get_calibration_data(config, train_cols)
-    n_samples = min(MAX_EVAL_ROWS, len(X_cal_full))
-    X_cal = X_cal_full.sample(n=n_samples, random_state=RANDOM_SEED)
-    print(f"Using {n_samples} samples for analysis.")
+    # Subsample for computational efficiency
+    n_samples = min(MAX_EVAL_ROWS, len(X_test_full))
+    X_eval = X_test_full.sample(n=n_samples, random_state=RANDOM_SEED)
+    print(f"Using {n_samples} samples from the Spatio-Temporal Test set for analysis.")
 
     # Define target function
     def target_func(X_df: pd.DataFrame) -> np.ndarray:
         if args.mode == "width":
+            # predict with calibrate=True uses the Q_hat found during training
             preds = wrapper.predict(X_df.values, quantiles=[ALPHA / 2, 1 - ALPHA / 2], calibrate=True)
             return preds[:, 1] - preds[:, 0]
         else:
             return wrapper.predict(X_df.values, quantiles="mean")
 
-    # Phase 2: Clustering
+    # Phase 2: Clustering (Partitioning the test feature space)
     print(f"\n--- Phase 2: Feature Space Partitioning ---")
-    corr_matrix = X_cal.corr(method="spearman").abs().fillna(0.0)
+    corr_matrix = X_eval.corr(method="spearman").abs().fillna(0.0)
     dist_matrix = 1.0 - corr_matrix
     linkage_matrix = complete(squareform(dist_matrix.values))
     cluster_labels = fcluster(linkage_matrix, args.tau, criterion="distance")
     
-    feature_to_cluster = {feat: label for feat, label in zip(X_cal.columns, cluster_labels)}
+    feature_to_cluster = {feat: label for feat, label in zip(X_eval.columns, cluster_labels)}
     clusters_dict: dict[int, list[str]] = {}
     for feat, label in feature_to_cluster.items():
         clusters_dict.setdefault(label, []).append(feat)
@@ -175,10 +159,10 @@ def main():
         medoid = sub_dist.sum(axis=1).idxmin()
         feature_clusters.append(FeatureCluster(cluster_id=cid, features=feats, medoid=str(medoid)))
     
-    # Phase 3: SHAP
+    # Phase 3: SHAP (Explaining the model on unseen stations)
     print(f"\n--- Phase 3: Grouped Asymmetric Shapley Attribution ---")
-    shap_values = get_shap_values(wrapper, X_cal, mode=args.mode)
-    feat_to_idx = {feat: i for i, feat in enumerate(X_cal.columns)}
+    shap_values = get_shap_values(wrapper, X_eval, mode=args.mode)
+    feat_to_idx = {feat: i for i, feat in enumerate(X_eval.columns)}
     
     for cluster in feature_clusters:
         indices = [feat_to_idx[f] for f in cluster.features]
@@ -198,7 +182,7 @@ def main():
     n_rows = (len(top_clusters) + n_cols - 1) // n_cols
     
     for i, cluster in enumerate(top_clusters):
-        q, ale = compute_ale(target_func, X_cal, cluster.medoid)
+        q, ale = compute_ale(target_func, X_eval, cluster.medoid)
         plt.subplot(n_rows, n_cols, i + 1)
         plt.plot(q, ale, marker='o', markersize=3, color=COLORS[0], linewidth=1.5, alpha=0.9)
         plt.axhline(0, color='#333333', linestyle='--', alpha=0.3, linewidth=1.0)
