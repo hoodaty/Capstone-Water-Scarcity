@@ -65,7 +65,8 @@ def wis_score(
 
     mae_median = np.abs(y - median)
     score = (alpha / 2.0) * winkler + 0.5 * mae_median
-    return score
+    denom = 1.5  # Factor 1 / (K + 1/2) where K=1
+    return score / denom
 
 
 def split_dataset(
