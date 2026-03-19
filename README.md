@@ -31,18 +31,38 @@ for m in lgbm_cqr qrf_cqr catboost_cqr; do
 done
 ```
 
-## Generating Plots
+## Interpretability & Error Analysis
 
-To compare the results and generate figures:
+Once a model is trained, use these scripts to analyze its behavior on the test set.
+
+### 1. Advanced Interpretability (Grouped SHAP + ALE)
+Analyze which feature clusters drive the model using correlation-aware clustering.
+
+*   **Uncertainty Mode** (Why is the model unsure?):
+    ```bash
+    uv run interp.py --results-dir results/lgbm_cqr_calib_mixed/ --week 0 --mode width
+    ```
+*   **Median Mode** (How is streamflow magnitude affected?):
+    ```bash
+    uv run interp.py --results-dir results/lgbm_cqr_calib_mixed/ --week 0 --mode median
+    ```
+
+### 2. Worst-Station Analysis
+Identify and plot the top $K$ stations with the highest RMSE on unseen (spatio-temporal) data to debug spatial generalization.
+```bash
+uv run worst-analysis.py --results-dir results/lgbm_cqr_calib_mixed/ --week 0 --top-k 3
+```
+
+## Generating Global Plots
+
+To compare the results and generate figures across all experiments:
 
 ### Per-model Comparison
-Compare calibration strategies side by side for each model (default):
 ```bash
 uv run plots.py --results-dir results/ --group-by model --output figures/modelwise
 ```
 
 ### All Experiments Comparison
-Include all experiments in one set of plots:
 ```bash
 uv run plots.py --results-dir results/ --group-by all --output figures/comparison
 ```
