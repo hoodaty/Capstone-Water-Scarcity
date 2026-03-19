@@ -1,12 +1,52 @@
 """Preprocessing utilities for spatial-temporal interpolation and data merging."""
 
 from pathlib import Path
+import itertools
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.dates import MonthLocator, DateFormatter
-import itertools
 from cartopy import crs as ccrs
 from cartopy import feature as cfeature
+
+# Muted, colorblind-friendly palette
+COLORS = [
+    "#5778a4", # Blue
+    "#e49444", # Orange
+    "#56a64b", # Green
+    "#d1615d", # Red
+    "#b279a2", # Purple
+    "#8c613c", # Brown
+    "#85b6b2", # Teal
+    "#e15759", # Light Red
+]
+
+def apply_style():
+    """Apply a consistent, modern style to all matplotlib plots."""
+    plt.rcParams.update(
+        {
+            "figure.dpi": 150,
+            "savefig.dpi": 300,
+            "font.family": "sans-serif",
+            "font.size": 11,
+            "axes.titlesize": 11,
+            "axes.titleweight": "semibold",
+            "axes.labelsize": 10,
+            "axes.linewidth": 0.8,
+            "axes.spines.top": False,
+            "axes.spines.right": False,
+            "axes.grid": True,
+            "axes.grid.axis": "y",
+            "grid.linestyle": "--",
+            "grid.alpha": 0.4,
+            "grid.linewidth": 0.6,
+            "axes.axisbelow": True,
+            "xtick.bottom": False,
+            "legend.fontsize": 9,
+            "legend.title_fontsize": 9,
+            "legend.framealpha": 0.9,
+            "legend.edgecolor": "#cccccc",
+        }
+    )
 
 
 def plot_water_flows(
@@ -155,6 +195,7 @@ def plot_water_flow_predictions(
     display=True,
     target_col="water_flow_week1",
     save_path=None,
+    title_suffix="",
 ):
     """Plot water flow predictions versus actual water flow for each station.
 
@@ -168,10 +209,12 @@ def plot_water_flow_predictions(
         display (bool, optional): If True, the plot is displayed.
         target_col (str, optional): Column name for the target series.
         save_path (str, optional): Explicit path to save the plot.
+        title_suffix (str, optional): Additional text to append to the plot title.
 
     Returns:
         None. Saves the plot as a PNG file in the specified directory.
     """
+    apply_style()
     water_flow = ground_truth.copy()
     water_flow["predictions"] = prediction
     if len(y_pis.shape) == 3:
@@ -188,7 +231,7 @@ def plot_water_flow_predictions(
     unique_names = water_flow["station_code"].unique()
 
     fig, axes = plt.subplots(
-        len(unique_names), 1, figsize=(20, 5 * len(unique_names)), sharex=True
+        len(unique_names), 1, figsize=(12, 4 * len(unique_names)), sharex=True
     )
     if len(unique_names) == 1:
         axes = [axes]
@@ -196,43 +239,46 @@ def plot_water_flow_predictions(
     for ax, name in zip(axes, unique_names):
         wf_station = water_flow[water_flow["station_code"] == name]
 
+        # Ground Truth: Solid line with markers
+        ax.plot(
+            wf_station["ObsDate"],
+            wf_station[target_col],
+            label="Actual Water Flow",
+            color="#333333", # Dark gray
+            linewidth=1.0,
+            marker="o",
+            markersize=3,
+            alpha=0.6,
+            zorder=3,
+        )
+        # Predictions: Dashed line with markers
         ax.plot(
             wf_station["ObsDate"],
             wf_station["predictions"],
             label="Predictions",
-            color="red",
-            linewidth=2,
+            color=COLORS[3], # Muted Red
+            linewidth=1.2,
+            linestyle="--",
+            marker="s", # Square marker for predictions
+            markersize=3,
+            alpha=0.9,
+            zorder=4,
         )
-        ax.plot(
-            wf_station["ObsDate"],
-            wf_station["predictions_up"],
-            label="predictions_up",
-            color="green",
-            linewidth=1,
-        )
-        ax.plot(
+        ax.fill_between(
             wf_station["ObsDate"],
             wf_station["predictions_dw"],
-            label="predictions_dw",
-            color="orange",
-            linewidth=1,
-        )
-        ax.plot(
-            wf_station["ObsDate"],
-            wf_station[target_col],
-            label="Water Flow",
-            color="blue",
-            linewidth=2,
+            wf_station["predictions_up"],
+            color=COLORS[3],
+            alpha=0.12,
+            label="90% Prediction Interval",
+            zorder=2,
+            edgecolor="none",
         )
 
-        ax.set_title(f"Water Flow for Station: {name}", fontsize=24)
-        ax.set_xlabel("Observation Date", fontsize=18)
-        ax.set_ylabel("Water Flow", fontsize=18)
-        ax.legend()
-        ax.grid(True)
-        ax.legend(fontsize=12)
-        ax.tick_params(axis="x", rotation=45, labelsize=12)
-        ax.tick_params(axis="y", labelsize=12)
+        ax.set_title(f"Station: {name}{title_suffix}", loc="left", fontsize=11, fontweight="semibold", pad=10)
+        ax.set_ylabel("Water Flow (m³/s)", fontsize=9)
+        ax.tick_params(axis="both", labelsize=9)
+        ax.legend(loc="upper right", frameon=True, fontsize=8)
 
         ax.xaxis.set_major_locator(plt.MaxNLocator(10))
 

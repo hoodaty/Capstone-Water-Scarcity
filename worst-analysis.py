@@ -7,7 +7,7 @@ from sklearn.metrics import mean_squared_error
 
 from analysis import get_point_model, prepare_analysis_data
 from pipeline import NUMBER_OF_WEEKS, ALPHA
-from src.utils.plots import plot_water_flow_predictions
+from src.utils.plots import plot_water_flow_predictions, apply_style
 
 
 def predict_with_intervals(
@@ -94,6 +94,7 @@ def main():
 
     for rank, station in enumerate(worst, start=1):
         mask = test_eval["station_code"] == station
+        station_rmse_val = rmse_by_station.get(station)
         plot_water_flow_predictions(
             ground_truth=_ensure_obsdate(test_eval.loc[mask].copy()),
             prediction=y_pred[mask],
@@ -102,6 +103,7 @@ def main():
             save_path=out_dir / f"week{args.week}_rank{rank}_{station}.png",
             display=False,
             target_col=target_col,
+            title_suffix=f" (RMSE: {station_rmse_val:.2f})",
         )
         print(f"Saved rank {rank}: {station}")
 
@@ -111,4 +113,5 @@ def main():
 
 
 if __name__ == "__main__":
+    apply_style()
     main()
